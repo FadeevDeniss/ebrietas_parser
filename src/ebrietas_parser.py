@@ -384,7 +384,4 @@ def recursion_bypass(iterable: list, tags: tuple = None, i: int = 0, ) -> list:
         return container
 
 
-parse_data('https://siriust.ru')
 
-# https://siriust.ru
-# https://ok.ru

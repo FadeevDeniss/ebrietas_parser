@@ -9,6 +9,15 @@ from src.command_line import get_user_credentials
 
 
 def init_database(dbname: str = None):
+    """
+    Function that creates database and tables
+    (Custom db for siriust.ru website)
+
+    Parameters:
+        dbname: str
+            you can specialize name for database
+    :return:
+    """
 
     connection = sqlite3.connect(dbname + '.sqlite')
     connection_cursor = connection.cursor()
@@ -53,15 +62,24 @@ def init_database(dbname: str = None):
 
 
 def insert_user_data(data: dict):
+    """
+    Function for execute INSERT statement into personal_info
+    user table
+
+    Parameters:
+        data: dict
+            Data to insert into personal info table
+    Returns:
+        None
+    """
     with sqlite3.connect('siriust_db.sqlite') as conn:
         cursor = conn.cursor()
         try:
+            params = data.get('user_email'), data.get('firstname'), data.get('lastname'), data.get('city'),
             cursor.execute(
-                f"INSERT INTO personal_info (user_email, firstname, lastname, city) VALUES ('{data.get('user_email')}',"
-                f"'{data.get('firstname')}', "
-                f"'{data.get('lastname')}', "
-                f"'{data.get('city')}');"
-                )
+                f"INSERT INTO personal_info (user_email, firstname, lastname, city) VALUES (?, ?, ?, ?);",
+                params
+            )
             conn.commit()
             return cursor.lastrowid
         except sqlite3.Error as err:
@@ -69,32 +87,54 @@ def insert_user_data(data: dict):
             conn.rollback()
 
 
-def insert_favorite_products(data: list, last_row_id):
+def insert_favorite_products(data: list, last_row_id: int):
+    """
+    Function for execute INSERT statement into favorite_products and
+    reviews
+
+    Parameters:
+        data: list
+            Data with product info and all reviews data
+        last_row_id: int
+            Id for reviews table foreign key field
+    Returns:
+        None
+    """
+
     for product in data:
         conn = sqlite3.connect('siriust_db.sqlite')
         cursor = conn.cursor()
         try:
+            params = tuple(
+                [last_row_id,
+                 product.get('name'),
+                 product.get('ratingValue'),
+                 product.get('price'),
+                 product.get('in_stock')]
+            )
             cursor.execute(
                 f"INSERT INTO favorite_products ("
-                f"    user_id, product_name, retail_price, total_reviews, total_in_stock)"
-                f"VALUES ('{last_row_id}',"
-                f"'{product.get('name')}',"
-                f"'{product.get('price')}',"
-                f"'{product.get('reviews')}',"
-                f"'{product.get('in_stock')}');"
+                f"user_id, product_name, rating, retail_price, total_in_stock)"
+                f"VALUES (?, ?, ?, ?, ?);",
+                params
             )
             conn.commit()
             product_last_row = cursor.lastrowid
             if product.get('reviews'):
                 for r in product.get('reviews'):
+                    params_2 = tuple(
+                        [product_last_row,
+                         r.get('ratingValue'),
+                         r.get('itemReviewed'),
+                         r.get('name'),
+                         r.get('datePublished')]
+                    )
+
                     cursor.execute(
-                        f"INSERT INTO reviews (product_id, rating_value, content, reviewer, published)"
-                        f"VALUES ('{product_last_row}',"
-                        f"'{r.get('ratingValue')}',"
-                        f"'{r.get('itemReviewed')}',"
-                        f"'{r.get('name')}',"
-                        f"'{r.get('datePublished')}', "
-                        f");"
+                        f"INSERT INTO reviews ("
+                        f"product_id, rating_value, content, reviewer, published)"
+                        f"VALUES (?, ?, ?, ?, ?);",
+                        params_2
                     )
             conn.commit()
             conn.close()
@@ -234,6 +274,7 @@ def parse_data(url: str):
         for url in product_links:
             wishlist_products.append(get_product_info(url, session))
         insert_favorite_products(wishlist_products, last_row_id)
+        print(wishlist_products, personal_info, sep='\n')
         return wishlist_products, personal_info
     except requests.exceptions.HTTPError as err:
         raise SystemExit(err)
@@ -260,23 +301,10 @@ def get_personal_info(url: str, session: Session) -> dict:
     tree = etree.HTML(r.content, parser)
     div = tree.body.find('div', {'id': 'content_general'})
 
-    acc_info['user_email'] = str(div.get_element_by_id('email').value)
-    acc_info['firstname'] = str(tree.xpath("//input[contains(@name, 'user_data[s_firstname]')]")[0].value)
-    acc_info['lastname'] = str(tree.xpath("//input[contains(@name, 'user_data[s_lastname]')]")[0].value)
-    acc_info['city'] = str(tree.xpath("//input[contains(@name, 'user_data[b_city]')]")[0].value)
-
-    # with sqlite3.connect('pyparser_db.sqlite') as connection:
-    #     try:
-    #         connection.execute(f'''INSERT INTO personal_info {tuple(acc_info.keys())} VALUES (
-    #                                    {acc_info.get('user_email')},
-    #                                    {acc_info.get('firstname')},
-    #                                    {acc_info.get('lastname')},
-    #                                    {acc_info.get('city')})'''
-    #                            )
-    #     except sqlite3.Error as err:
-    #         connection.rollback()
-    #         pass
-    #     connection.commit()
+    acc_info['user_email'] = div.get_element_by_id('email').value
+    acc_info['firstname'] = tree.xpath("//input[contains(@name, 'user_data[s_firstname]')]")[0].value
+    acc_info['lastname'] = tree.xpath("//input[contains(@name, 'user_data[s_lastname]')]")[0].value
+    acc_info['city'] = tree.xpath("//input[contains(@name, 'user_data[b_city]')]")[0].value
     return acc_info
 
 
